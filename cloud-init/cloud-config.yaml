@@ -24,7 +24,10 @@ users:
 
 write_files:
   - path: /opt/breeze/app/main.py
-    owner: root:breeze
+    # write_files runs before the users module on this Ubuntu image, so only
+    # reference the pre-existing root account here. runcmd applies breeze group
+    # ownership after cloud-init has created the service account.
+    owner: root:root
     permissions: "0640"
     content: |
       """Safe placeholder for the future ICICI Breeze trading service."""
@@ -47,7 +50,7 @@ write_files:
       logging.info("Breeze service placeholder stopped")
 
   - path: /etc/breeze/breeze.env.example
-    owner: root:breeze
+    owner: root:root
     permissions: "0640"
     content: |
       # Copy this file to /etc/breeze/breeze.env and chmod 0640.
@@ -90,6 +93,7 @@ runcmd:
   - [install, -d, -o, root, -g, breeze, -m, "0750", /opt/breeze/app]
   - [install, -d, -o, breeze, -g, breeze, -m, "0750", /opt/breeze/data]
   - [install, -d, -o, root, -g, breeze, -m, "0750", /etc/breeze]
+  - [chown, root:breeze, /opt/breeze/app/main.py, /etc/breeze/breeze.env.example]
   # A small swap file prevents dependency installation from exhausting the
   # E2 micro's 1 GB of RAM. It stays inside the fixed 50 GB boot volume.
   - [fallocate, -l, 1G, /swapfile]

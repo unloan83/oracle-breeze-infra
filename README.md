@@ -148,6 +148,7 @@ terraform plan
 - `terraform/` — OCI infrastructure, immutable free-tier sizes, validations, and outputs.
 - `cloud-init/cloud-config.yaml` — dedicated Breeze trading host bootstrap.
 - `cloud-init/vscode-dev.yaml` — ARM64 development host and Remote-SSH toolchain bootstrap.
+- `service/` — deployable placeholder, environment template, and hardened systemd unit for repairing or updating the trading host.
 - `.github/workflows/terraform.yml` — manual format, validate, plan, and apply workflow.
 - `.github/workflows/retry-vscode.yml` — guarded 30-minute capacity retry for only `vscode-dev`; it disables itself after success.
 
