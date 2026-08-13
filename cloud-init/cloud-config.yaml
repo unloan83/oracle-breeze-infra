@@ -1,0 +1,114 @@
+#cloud-config
+package_update: true
+package_upgrade: true
+ssh_pwauth: false
+disable_root: true
+
+packages:
+  - ca-certificates
+  - curl
+  - git
+  - python3
+  - python3-pip
+  - python3-venv
+  - unattended-upgrades
+
+users:
+  - default
+  - name: breeze
+    gecos: Breeze trading service
+    system: true
+    shell: /usr/sbin/nologin
+    home: /opt/breeze
+    create_home: false
+
+write_files:
+  - path: /opt/breeze/app/main.py
+    owner: root:breeze
+    permissions: "0640"
+    content: |
+      """Safe placeholder for the future ICICI Breeze trading service."""
+      import logging
+      import signal
+      import time
+
+      running = True
+
+      def stop(_signum, _frame):
+          global running
+          running = False
+
+      signal.signal(signal.SIGTERM, stop)
+      signal.signal(signal.SIGINT, stop)
+      logging.basicConfig(level=logging.INFO)
+      logging.info("Breeze service placeholder started; no trading logic is configured")
+      while running:
+          time.sleep(30)
+      logging.info("Breeze service placeholder stopped")
+
+  - path: /etc/breeze/breeze.env.example
+    owner: root:breeze
+    permissions: "0640"
+    content: |
+      # Copy this file to /etc/breeze/breeze.env and chmod 0640.
+      # Add credentials directly on the VM or from a secret manager. Never commit them.
+      BREEZE_API_KEY=
+      BREEZE_API_SECRET=
+      BREEZE_SESSION_TOKEN=
+
+  - path: /etc/systemd/system/breeze-trading.service
+    owner: root:root
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=ICICI Breeze trading service
+      Wants=network-online.target tailscaled.service
+      After=network-online.target tailscaled.service
+
+      [Service]
+      Type=simple
+      User=breeze
+      Group=breeze
+      WorkingDirectory=/opt/breeze/app
+      EnvironmentFile=-/etc/breeze/breeze.env
+      ExecStart=/opt/breeze/venv/bin/python /opt/breeze/app/main.py
+      Restart=on-failure
+      RestartSec=10
+      NoNewPrivileges=true
+      PrivateTmp=true
+      ProtectSystem=strict
+      ProtectHome=true
+      ReadWritePaths=/opt/breeze
+      CapabilityBoundingSet=
+      LockPersonality=true
+      MemoryDenyWriteExecute=true
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - [install, -d, -o, root, -g, breeze, -m, "0750", /opt/breeze/app]
+  - [install, -d, -o, breeze, -g, breeze, -m, "0750", /opt/breeze/data]
+  - [install, -d, -o, root, -g, breeze, -m, "0750", /etc/breeze]
+  # A small swap file prevents dependency installation from exhausting the
+  # E2 micro's 1 GB of RAM. It stays inside the fixed 50 GB boot volume.
+  - [fallocate, -l, 1G, /swapfile]
+  - [chmod, "0600", /swapfile]
+  - [mkswap, /swapfile]
+  - [swapon, /swapfile]
+  - [sh, -c, "grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' >> /etc/fstab"]
+  - [python3, -m, venv, /opt/breeze/venv]
+  - [/opt/breeze/venv/bin/python, -m, pip, install, --upgrade, pip]
+  - [/opt/breeze/venv/bin/python, -m, pip, install, "breeze-connect==1.0.69"]
+  - [chown, -R, root:breeze, /opt/breeze/venv, /opt/breeze/app]
+  - [curl, -fsSL, -o, /usr/share/keyrings/tailscale-archive-keyring.gpg, "https://pkgs.tailscale.com/stable/ubuntu/jammy.noarmor.gpg"]
+  - [curl, -fsSL, -o, /etc/apt/sources.list.d/tailscale.list, "https://pkgs.tailscale.com/stable/ubuntu/jammy.tailscale-keyring.list"]
+  - [apt-get, update]
+  - [apt-get, install, -y, tailscale]
+  - [systemctl, enable, --now, tailscaled.service]
+  - [systemctl, enable, --now, apt-daily-upgrade.timer]
+  - [systemctl, daemon-reload]
+  # Deliberately do not enable the placeholder trading service or authenticate
+  # Tailscale. Both require operator-supplied secrets after provisioning.
+
+final_message: "Breeze VM bootstrap complete. Authenticate Tailscale and configure /etc/breeze/breeze.env before enabling the trading service."

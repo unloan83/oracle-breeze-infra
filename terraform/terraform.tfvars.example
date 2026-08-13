@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars only for local use. The file is ignored by Git.
+tenancy_ocid       = "ocid1.tenancy.oc1..example"
+user_ocid          = "ocid1.user.oc1..example"
+fingerprint        = "00:00:00:00:00:00:00:00:00:00:00:00:00:00:00:00"
+private_key_path   = "/absolute/path/to/oci_api_key.pem"
+region             = "ap-mumbai-1"
+compartment_ocid   = "ocid1.compartment.oc1..example"
+ssh_authorized_key = "ssh-ed25519 AAAA... workstation"
+ssh_allowed_cidr   = "203.0.113.10/32"
+confirm_home_region = true
+
+# Set independently if the first availability domain lacks capacity.
+# breeze_availability_domain = "xxxx:AP-MUMBAI-1-AD-1"
+# vscode_availability_domain = "xxxx:AP-MUMBAI-1-AD-1"

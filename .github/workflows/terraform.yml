@@ -1,0 +1,122 @@
+name: Terraform OCI
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Terraform operation
+        required: true
+        type: choice
+        default: plan
+        options:
+          - plan
+          - apply
+      confirm_home_region:
+        description: I verified OCI_REGION is the tenancy home region
+        required: true
+        type: boolean
+        default: false
+      breeze_availability_domain:
+        description: Optional AD for breeze-trading; blank uses the first AD
+        required: false
+        type: string
+        default: ""
+      vscode_availability_domain:
+        description: Optional AD for vscode-dev; blank uses the first AD
+        required: false
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: oracle-breeze-infra-terraform
+  cancel-in-progress: false
+
+jobs:
+  terraform:
+    name: ${{ inputs.operation }}
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.operation == 'apply' && 'production' || 'planning' }}
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_private_key_path: ${{ runner.temp }}/oci_api_key.pem
+      TF_VAR_region: ${{ secrets.OCI_REGION }}
+      TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      TF_VAR_ssh_authorized_key: ${{ secrets.SSH_AUTHORIZED_KEY }}
+      TF_VAR_ssh_allowed_cidr: ${{ secrets.SSH_ALLOWED_CIDR }}
+      TF_VAR_confirm_home_region: ${{ inputs.confirm_home_region }}
+      TF_VAR_breeze_availability_domain: ${{ inputs.breeze_availability_domain }}
+      TF_VAR_vscode_availability_domain: ${{ inputs.vscode_availability_domain }}
+      OCI_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      OCI_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_private_key_path: ${{ runner.temp }}/oci_api_key.pem
+      OCI_region: ${{ secrets.OCI_REGION }}
+      OCI_STATE_BUCKET: ${{ secrets.OCI_STATE_BUCKET }}
+      OCI_OBJECT_STORAGE_NAMESPACE: ${{ secrets.OCI_OBJECT_STORAGE_NAMESPACE }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+
+      - name: Install OCI API signing key
+        env:
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          umask 077
+          printf '%s' "$OCI_PRIVATE_KEY" > "$TF_VAR_private_key_path"
+          test -s "$TF_VAR_private_key_path"
+
+      - name: Verify required inputs
+        run: |
+          test "${{ inputs.confirm_home_region }}" = "true" || {
+            echo "Refusing to continue until the home-region confirmation is checked." >&2
+            exit 1
+          }
+          required=(
+            TF_VAR_tenancy_ocid TF_VAR_user_ocid TF_VAR_fingerprint TF_VAR_region
+            TF_VAR_compartment_ocid TF_VAR_ssh_authorized_key TF_VAR_ssh_allowed_cidr
+            OCI_STATE_BUCKET OCI_OBJECT_STORAGE_NAMESPACE
+          )
+          for name in "${required[@]}"; do
+            test -n "${!name:-}" || { echo "Required secret mapped to $name is empty." >&2; exit 1; }
+          done
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Initialize remote state
+        run: >-
+          terraform init -reconfigure
+          -backend-config="bucket=$OCI_STATE_BUCKET"
+          -backend-config="namespace=$OCI_OBJECT_STORAGE_NAMESPACE"
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan
+        run: terraform plan -lock-timeout=5m -out=tfplan
+
+      - name: Apply reviewed plan
+        if: inputs.operation == 'apply'
+        run: terraform apply -lock-timeout=5m -auto-approve tfplan
+
+      - name: Remove credentials and plan
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: rm -f "$TF_VAR_private_key_path" terraform/tfplan
