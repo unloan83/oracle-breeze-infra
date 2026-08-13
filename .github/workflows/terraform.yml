@@ -113,6 +113,11 @@ jobs:
       - name: Plan
         run: terraform plan -lock-timeout=5m -out=tfplan
 
+      - name: Show managed trading address
+        run: |
+          terraform state show -no-color oci_core_public_ip.breeze_trading \
+            | sed -n 's/^ *ip_address *= *"\([^"]*\)"/breeze_trading_public_ip=\1/p'
+
       - name: Apply reviewed plan
         if: inputs.operation == 'apply'
         run: terraform apply -lock-timeout=5m -auto-approve tfplan
