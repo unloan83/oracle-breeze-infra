@@ -1,0 +1,143 @@
+name: Retry VS Code VM
+
+on:
+  schedule:
+    # GitHub schedules use UTC. Capacity is dynamic; retry every 30 minutes.
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: oracle-breeze-infra-terraform
+  cancel-in-progress: false
+
+jobs:
+  retry-vscode:
+    name: Retry vscode-dev
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        shell: bash
+        working-directory: terraform
+    env:
+      TF_IN_AUTOMATION: "true"
+      TF_INPUT: "false"
+      TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      TF_VAR_private_key_path: ${{ github.workspace }}/.oci/oci_api_key.pem
+      TF_VAR_region: ${{ secrets.OCI_REGION }}
+      TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
+      TF_VAR_ssh_authorized_key: ${{ secrets.SSH_AUTHORIZED_KEY }}
+      TF_VAR_ssh_allowed_cidr: ${{ secrets.SSH_ALLOWED_CIDR }}
+      TF_VAR_confirm_home_region: "true"
+      OCI_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
+      OCI_user_ocid: ${{ secrets.OCI_USER_OCID }}
+      OCI_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
+      OCI_private_key_path: ${{ github.workspace }}/.oci/oci_api_key.pem
+      OCI_region: ${{ secrets.OCI_REGION }}
+      OCI_STATE_BUCKET: ${{ secrets.OCI_STATE_BUCKET }}
+      OCI_OBJECT_STORAGE_NAMESPACE: ${{ secrets.OCI_OBJECT_STORAGE_NAMESPACE }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.13.5"
+
+      - name: Install OCI API signing key
+        env:
+          OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
+        run: |
+          umask 077
+          mkdir -p "$(dirname "$TF_VAR_private_key_path")"
+          printf '%s' "$OCI_PRIVATE_KEY" > "$TF_VAR_private_key_path"
+          test -s "$TF_VAR_private_key_path"
+
+      - name: Verify required secrets
+        run: |
+          required=(
+            TF_VAR_tenancy_ocid TF_VAR_user_ocid TF_VAR_fingerprint TF_VAR_region
+            TF_VAR_compartment_ocid TF_VAR_ssh_authorized_key TF_VAR_ssh_allowed_cidr
+            OCI_STATE_BUCKET OCI_OBJECT_STORAGE_NAMESPACE
+          )
+          for name in "${required[@]}"; do
+            test -n "${!name:-}" || { echo "Required secret mapped to $name is empty." >&2; exit 1; }
+          done
+
+      - name: Check formatting
+        run: terraform fmt -check -recursive -diff
+
+      - name: Initialize remote state
+        run: >-
+          terraform init -reconfigure
+          -backend-config="bucket=$OCI_STATE_BUCKET"
+          -backend-config="namespace=$OCI_OBJECT_STORAGE_NAMESPACE"
+
+      - name: Validate
+        run: terraform validate
+
+      - name: Plan only the missing development VM
+        id: plan
+        run: |
+          set +e
+          terraform plan \
+            -lock-timeout=5m \
+            -target=oci_core_instance.vscode_dev \
+            -detailed-exitcode \
+            -out=tfplan
+          exit_code=$?
+          set -e
+          test "$exit_code" -ne 1
+          echo "has_changes=$([[ $exit_code -eq 2 ]] && echo true || echo false)" >> "$GITHUB_OUTPUT"
+
+      - name: Verify retry plan is create-only
+        if: steps.plan.outputs.has_changes == 'true'
+        run: |
+          terraform show -json tfplan > tfplan.json
+          unexpected="$(jq -r '
+            [.resource_changes[]
+             | select(.change.actions != ["no-op"])
+             | select(.address != "oci_core_instance.vscode_dev" or .change.actions != ["create"])
+             | .address] | join(", ")
+          ' tfplan.json)"
+          vscode_creates="$(jq '[.resource_changes[]
+            | select(.address == "oci_core_instance.vscode_dev" and .change.actions == ["create"])]
+            | length' tfplan.json)"
+          test -z "$unexpected" || {
+            echo "Refusing automatic apply; unexpected resource changes: $unexpected" >&2
+            exit 1
+          }
+          test "$vscode_creates" -eq 1 || {
+            echo "Refusing automatic apply; expected exactly one vscode-dev create." >&2
+            exit 1
+          }
+
+      - name: Apply verified VM-only plan
+        if: steps.plan.outputs.has_changes == 'true'
+        run: terraform apply -lock-timeout=5m -auto-approve tfplan
+
+      - name: Show development VM address
+        if: success()
+        run: terraform output vscode_dev_public_ip
+
+      - name: Disable retries after success
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        working-directory: ${{ github.workspace }}
+        run: >-
+          gh api --method PUT
+          "repos/${GITHUB_REPOSITORY}/actions/workflows/retry-vscode.yml/disable"
+
+      - name: Remove credentials and plans
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: rm -f "$TF_VAR_private_key_path" terraform/tfplan terraform/tfplan.json

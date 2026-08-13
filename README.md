@@ -149,5 +149,6 @@ terraform plan
 - `cloud-init/cloud-config.yaml` — dedicated Breeze trading host bootstrap.
 - `cloud-init/vscode-dev.yaml` — ARM64 development host and Remote-SSH toolchain bootstrap.
 - `.github/workflows/terraform.yml` — manual format, validate, plan, and apply workflow.
+- `.github/workflows/retry-vscode.yml` — guarded 30-minute capacity retry for only `vscode-dev`; it disables itself after success.
 
 `terraform destroy` is intentionally not exposed by the workflow. Destroying the complete stack releases the reserved trading address. Keep remote state and its version history until all resources have been verified as removed.
