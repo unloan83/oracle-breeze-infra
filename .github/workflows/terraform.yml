@@ -49,7 +49,7 @@ jobs:
       TF_VAR_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
       TF_VAR_user_ocid: ${{ secrets.OCI_USER_OCID }}
       TF_VAR_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-      TF_VAR_private_key_path: ${{ runner.temp }}/oci_api_key.pem
+      TF_VAR_private_key_path: ${{ github.workspace }}/.oci/oci_api_key.pem
       TF_VAR_region: ${{ secrets.OCI_REGION }}
       TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
       TF_VAR_ssh_authorized_key: ${{ secrets.SSH_AUTHORIZED_KEY }}
@@ -60,7 +60,7 @@ jobs:
       OCI_tenancy_ocid: ${{ secrets.OCI_TENANCY_OCID }}
       OCI_user_ocid: ${{ secrets.OCI_USER_OCID }}
       OCI_fingerprint: ${{ secrets.OCI_FINGERPRINT }}
-      OCI_private_key_path: ${{ runner.temp }}/oci_api_key.pem
+      OCI_private_key_path: ${{ github.workspace }}/.oci/oci_api_key.pem
       OCI_region: ${{ secrets.OCI_REGION }}
       OCI_STATE_BUCKET: ${{ secrets.OCI_STATE_BUCKET }}
       OCI_OBJECT_STORAGE_NAMESPACE: ${{ secrets.OCI_OBJECT_STORAGE_NAMESPACE }}
@@ -79,6 +79,7 @@ jobs:
           OCI_PRIVATE_KEY: ${{ secrets.OCI_PRIVATE_KEY }}
         run: |
           umask 077
+          mkdir -p "$(dirname "$TF_VAR_private_key_path")"
           printf '%s' "$OCI_PRIVATE_KEY" > "$TF_VAR_private_key_path"
           test -s "$TF_VAR_private_key_path"
 
