@@ -1,8 +1,8 @@
 locals {
   breeze_shape         = "VM.Standard.E2.1.Micro"
   vscode_shape         = "VM.Standard.A1.Flex"
-  vscode_ocpus         = 2
-  vscode_memory_gb     = 12
+  vscode_ocpus         = 1
+  vscode_memory_gb     = 6
   boot_volume_gb       = 50
   total_boot_volume_gb = local.boot_volume_gb * 2
   breeze_ad            = try(trimspace(var.breeze_availability_domain), "") != "" ? var.breeze_availability_domain : data.oci_identity_availability_domains.available.availability_domains[0].name
@@ -214,8 +214,8 @@ check "always_free_guardrails" {
   }
 
   assert {
-    condition     = local.vscode_ocpus == 2 && local.vscode_memory_gb == 12
-    error_message = "vscode-dev must remain at the Always Free allocation of 2 OCPUs and 12 GB RAM."
+    condition     = local.vscode_ocpus == 1 && local.vscode_memory_gb == 6
+    error_message = "vscode-dev must remain at the reduced Always Free allocation of 1 OCPU and 6 GB RAM."
   }
 
   assert {

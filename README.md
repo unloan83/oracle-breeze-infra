@@ -5,7 +5,7 @@ Terraform deployment for two purpose-separated Ubuntu VMs on Oracle Cloud Infras
 | VM | Always Free allocation | Addressing | Purpose |
 | --- | --- | --- | --- |
 | `breeze-trading` | `VM.Standard.E2.1.Micro`, 50 GB boot volume | Reserved public IPv4 plus private IPv4 | Live ICICI Breeze trading only |
-| `vscode-dev` | `VM.Standard.A1.Flex`, 2 OCPUs, 12 GB RAM, 50 GB boot volume | Ephemeral public IPv4 plus private IPv4 | ARM64 VS Code Remote-SSH development |
+| `vscode-dev` | `VM.Standard.A1.Flex`, 1 OCPU, 6 GB RAM, 50 GB boot volume | Ephemeral public IPv4 plus private IPv4 | ARM64 VS Code Remote-SSH development |
 
 Both hosts share one VCN, public subnet, internet gateway, route table, and security list. Inbound traffic is limited to SSH from one explicitly trusted IPv4 `/32`; all other unsolicited public ingress is denied.
 
@@ -22,7 +22,7 @@ Neither host is automatically authenticated to Tailscale, and no Breeze credenti
 The configuration fixes the following values in code rather than exposing paid-size variables:
 
 - `breeze-trading`: `VM.Standard.E2.1.Micro`.
-- `vscode-dev`: `VM.Standard.A1.Flex`, exactly 2 OCPUs and 12 GB RAM.
+- `vscode-dev`: `VM.Standard.A1.Flex`, reduced to exactly 1 OCPU and 6 GB RAM to improve the chance of placement when A1 capacity is constrained.
 - Two 50 GB boot volumes: 100 GB total against the 200 GB Always Free block-storage allocation.
 - Compatible Canonical Ubuntu 22.04 platform images selected separately for x86 and ARM64.
 - One reserved public IPv4 for trading and the normal instance-lifetime public IPv4 for development.
