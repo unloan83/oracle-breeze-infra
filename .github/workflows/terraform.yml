@@ -11,6 +11,14 @@ on:
         options:
           - plan
           - apply
+      scope:
+        description: Limit the run to a reviewed resource when full apply is unsafe
+        required: true
+        type: choice
+        default: full
+        options:
+          - full
+          - ssh-security-list
       confirm_home_region:
         description: I verified OCI_REGION is the tenancy home region
         required: true
@@ -111,7 +119,12 @@ jobs:
         run: terraform validate
 
       - name: Plan
-        run: terraform plan -lock-timeout=5m -out=tfplan
+        run: |
+          target=()
+          if [ "${{ inputs.scope }}" = "ssh-security-list" ]; then
+            target=(-target=oci_core_security_list.hosts)
+          fi
+          terraform plan -lock-timeout=5m "${target[@]}" -out=tfplan
 
       - name: Show managed trading address
         run: |
